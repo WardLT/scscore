@@ -5,12 +5,15 @@ from optparse import OptionParser
 import threading
 from multiprocessing import Queue, Process
 import numpy as np
-from Queue import Empty
+from queue import Empty
+from functools import reduce
+import pickle
 import time
 import h5py
 from itertools import chain
 import os 
 project_root = os.path.dirname(os.path.dirname(__file__))
+models_dir = os.path.join(os.path.dirname(__file__), 'models')
 
 NK = 10
 NK0 = 5
@@ -27,7 +30,7 @@ FP_rad = 2
 parser = OptionParser()
 parser.add_option("-t", "--train", dest="train_path", default=os.path.join(project_root, 'data', 'reaxys_limit10.txt'))
 parser.add_option("--h5", dest="h5_suffix", default=".h5")
-parser.add_option("-m", "--save_dir", dest="save_path", default=os.path.join(project_root, 'models', 'example_model'))
+parser.add_option("-m", "--save_dir", dest="save_path", default=os.path.join(models_dir, 'example_model'))
 parser.add_option("-b", "--batch", dest="batch_size", default=16384)
 parser.add_option("-w", "--hidden", dest="hidden_size", default=300)
 parser.add_option("-d", "--depth", dest="depth", default=5)
@@ -74,7 +77,7 @@ else:
             return convFunc((nBits,), dtype=dtype)
         fp = AllChem.GetMorganFingerprint(mol, radius, useChirality=True) # uitnsparsevect
         fp_folded = np.zeros((nBits,), dtype=dtype)
-        for k, v in fp.GetNonzeroElements().iteritems():
+        for k, v in fp.GetNonzeroElements().items():
             fp_folded[k % nBits] += v 
         return convFunc(fp_folded)
 
@@ -96,7 +99,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
     input_mol.set_shape([batch_size*2, FP_len])
 
     mol_hiddens = tf.nn.relu(linearND(input_mol, hidden_size, scope="encoder0"))
-    for d in xrange(1, depth):
+    for d in range(1, depth):
         mol_hiddens = tf.nn.relu(linearND(mol_hiddens, hidden_size, scope="encoder%i"%d))
 
     score_sum = linearND(mol_hiddens, 1, scope="score_sum")
@@ -124,7 +127,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
     grads, var = zip(*grads_and_vars)
     grad_norm = tf.global_norm(grads)
     new_grads, _ = tf.clip_by_global_norm(grads, max_norm)
-    grads_and_vars = zip(new_grads, var)
+    grads_and_vars = list(zip(new_grads, var))
     backprop = optimizer.apply_gradients(grads_and_vars)
 
     # For training if exact values known (unused)
@@ -132,20 +135,20 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
     sse_grads, sse_var = zip(*sse_grads_and_vars)
     sse_grad_norm = tf.global_norm(sse_grads)
     sse_new_grads, _ = tf.clip_by_global_norm(sse_grads, max_norm)
-    sse_grads_and_vars = zip(sse_new_grads, sse_var)
+    sse_grads_and_vars = list(zip(sse_new_grads, sse_var))
     sse_backprop = optimizer.apply_gradients(sse_grads_and_vars)
 
     tf.global_variables_initializer().run(session=session)
     size_func = lambda v: reduce(lambda x, y: x*y, v.get_shape().as_list())
     n = sum(size_func(v) for v in tf.trainable_variables())
-    print "Model size: %dK" % (n/1000,)
+    print("Model size: %dK" % (n/1000,))
 
     queue = Queue()
 
 
     def read_data_once(path, coord, frag='valid'):
         if os.path.isfile(path + '.pkl'):
-            with open(path + '.pkl', 'r') as fid:
+            with open(path + '.pkl', 'rb') as fid:
                 data = pickle.load(fid)
         else:
             data = []
@@ -161,7 +164,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
                             data.append((_id, n, r_splt, p))
             random.seed(123)
             random.shuffle(data)
-            with open(path + '.pkl', 'w') as fid:
+            with open(path + '.pkl', 'wb') as fid:
                 data = pickle.dump(data, fid, -1)
 
         # h5py was generated post-shuffle
@@ -194,15 +197,15 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
 
             # Try to get all FPs in one read (faster)
             if (it + batch_size) <= data_len:
-                src_batch = list(chain.from_iterable((data[i][2], data[i][3]) for i in xrange(it, it + batch_size)))
-                ids_batch = [data[i][0] for i in xrange(it, it + batch_size)]
+                src_batch = list(chain.from_iterable((data[i][2], data[i][3]) for i in range(it, it + batch_size)))
+                ids_batch = [data[i][0] for i in range(it, it + batch_size)]
                 src_mols[:, :] = data_fps[h5_offset+2*it:h5_offset+2*(it+batch_size), :]
                 it = it + batch_size
             # If we are at the end, do one-by-one)
             else:
                 src_batch = []
                 ids_batch = []
-                for i in xrange(batch_size):
+                for i in range(batch_size):
                     if it >= data_len:
                         src_batch.append(r)
                         src_batch.append(p)
@@ -228,7 +231,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
             quit('Need to run .h5 script first to get FPs')
 
         if os.path.isfile(path + '.pkl'):
-            with open(path + '.pkl', 'r') as fid:
+            with open(path + '.pkl', 'rb') as fid:
                 data = pickle.load(fid)
         else:
             data = []
@@ -244,7 +247,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
                             data.append((_id, n, r_splt, p))
             random.seed(123)
             random.shuffle(data)
-            with open(path + '.pkl', 'w') as fid:
+            with open(path + '.pkl', 'wb') as fid:
                 data = pickle.dump(data, fid, -1)
 
         # h5py is post-shuffle
@@ -267,8 +270,8 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
 
             # Try to get all FPs in one read (faster)
             if (it + batch_size) <= data_len:
-                src_batch = list(chain.from_iterable((data[i][2], data[i][3]) for i in xrange(it, it + batch_size)))
-                ids_batch = [data[i][0] for i in xrange(it, it + batch_size)]
+                src_batch = list(chain.from_iterable((data[i][2], data[i][3]) for i in range(it, it + batch_size)))
+                ids_batch = [data[i][0] for i in range(it, it + batch_size)]
                 src_mols[:, :] = data_fps[h5_offset+2*it:h5_offset+2*(it+batch_size), :]
                 it = (it + batch_size) % data_len
 
@@ -276,7 +279,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
             else:
                 src_batch = []
                 ids_batch = []
-                for i in xrange(batch_size):
+                for i in range(batch_size):
                     _id, n, r, p = data[it]
                     src_batch.append(r)
                     src_batch.append(p)
@@ -331,7 +334,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
     try:
         if interactive_mode:
             
-            prompt = raw_input('enter a tag for this session: ')
+            prompt = input('enter a tag for this session: ')
             interactive_path = '%s.interactive.%s' % (restore_path, prompt.strip())
             fid = open(interactive_path, 'a')
 
@@ -341,7 +344,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
                 src_batch = [smi]
                 while len(src_batch) != (batch_size * 2): # round out last batch
                     src_batch.append('')
-                src_mols = np.array(map(smi_to_fp, src_batch), dtype=np.float32)
+                src_mols = np.array(list(map(smi_to_fp, src_batch)), dtype=np.float32)
                 if sum(sum(src_mols)) == 0:
                     print('Could not get fingerprint?')
                     cur_score = [0.]
@@ -361,7 +364,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
 
             while True:
                 try:
-                    prompt = raw_input('\nEnter SMILES (or quit): ')
+                    prompt = input('\nEnter SMILES (or quit): ')
                     if prompt.strip() == 'quit':
                         break
                     if str('>') in prompt: # reaction
@@ -501,13 +504,13 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as session:
                 if it % save_interval == 0:
                     lr *= 0.9
                     saver.save(session, opts.save_path + "/model.ckpt", global_step=it)
-                    print "Model Saved! Decaying learning rate"
+                    print("Model Saved! Decaying learning rate")
 
                 if it >= max(min_iterations, max_save * save_interval):
                     coord.request_stop()
 
     except Exception as e:
-        print e
+        print(e)
         coord.request_stop(e)
     finally:
         if not test and not interactive_mode: 

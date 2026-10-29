@@ -11,13 +11,13 @@ def get_score_from_smi(smi):
     except Exception:
         return (smi, 0.)
 
-prompt = raw_input('enter a tag for this session: ')
+prompt = input('enter a tag for this session: ')
 interactive_path = 'sascore.interactive.%s' % (prompt.strip())
 fid = open(interactive_path, 'a')
 
 while True:
     try:
-        prompt = raw_input('\nEnter SMILES (or quit): ')
+        prompt = input('\nEnter SMILES (or quit): ')
         if prompt.strip() == 'quit':
             break
         if str('>>') in prompt: # reaction

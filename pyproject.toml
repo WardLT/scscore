@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=62.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scscore"
+version = "0.1.0"
+description = "SCScore: neural-network synthetic complexity score for molecules, trained on Reaxys reactions"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.6"
+dependencies = [
+    "numpy",
+    "rdkit",
+    "six",
+]
+
+[project.optional-dependencies]
+# Only needed to retrain the model or run the TensorFlow standalone model
+train = [
+    "tensorflow",
+    "h5py",
+    "pandas",
+    "tqdm",
+]
+
+[tool.setuptools.packages.find]
+include = ["scscore*", "utils*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"scscore.models.full_reaxys_model_1024bool" = ["model.ckpt-10654.as_numpy.*", "model.ckpt-10654.data-*", "model.ckpt-10654.index", "model.ckpt-10654.meta"]
+"scscore.models.full_reaxys_model_1024uint8" = ["model.ckpt-10654.as_numpy.*", "model.ckpt-10654.data-*", "model.ckpt-10654.index", "model.ckpt-10654.meta"]
+"scscore.models.full_reaxys_model_2048bool" = ["model.ckpt-10654.as_numpy.*", "model.ckpt-10654.data-*", "model.ckpt-10654.index", "model.ckpt-10654.meta"]
+"utils.SA_Score" = ["fpscores.pkl.gz"]

@@ -11,10 +11,9 @@ import rdkit.Chem as Chem
 import rdkit.Chem.AllChem as AllChem
 import json
 import gzip
-import six
 
 import os
-project_root = os.path.dirname(os.path.dirname(__file__))
+models_dir = os.path.join(os.path.dirname(__file__), 'models')
 
 score_scale = 5.0
 min_separation = 0.25
@@ -23,7 +22,7 @@ FP_len = 1024
 FP_rad = 2
 
 def sigmoid(x):
-  return 1 / (1 + math.exp(-x))
+  return 1 / (1 + np.exp(-x))
 
 class SCScorer():
     def __init__(self, score_scale=score_scale):
@@ -31,7 +30,7 @@ class SCScorer():
         self.score_scale = score_scale
         self._restored = False
 
-    def restore(self, weight_path=os.path.join(project_root, 'models', 'full_reaxys_model_1024bool', 'model.ckpt-10654.as_numpy.pickle'), FP_rad=FP_rad, FP_len=FP_len):
+    def restore(self, weight_path=os.path.join(models_dir, 'full_reaxys_model_1024bool', 'model.ckpt-10654.as_numpy.pickle'), FP_rad=FP_rad, FP_len=FP_len):
         self.FP_len = FP_len; self.FP_rad = FP_rad
         self._load_vars(weight_path)
         print('Restored variables from {}'.format(weight_path))
@@ -73,7 +72,7 @@ class SCScorer():
             if not last_layer:
                 x = x * (x > 0) # ReLU
         x = 1 + (score_scale - 1) * sigmoid(x)
-        return x
+        return x.item()
 
     def get_score_from_smi(self, smi='', v=False):
         if not smi:
@@ -95,9 +94,9 @@ class SCScorer():
 
     def _load_vars(self, weight_path):
         if weight_path.endswith('pickle'):
-            import cPickle as pickle
+            import pickle
             with open(weight_path, 'rb') as fid:
-                self.vars = pickle.load(fid)
+                self.vars = pickle.load(fid, encoding='latin1')
                 self.vars = [x.tolist() for x in self.vars]
         elif weight_path.endswith('json.gz'):
             with gzip.GzipFile(weight_path, 'r') as fin:    # 4. gzip
@@ -109,21 +108,21 @@ class SCScorer():
 
 if __name__ == '__main__':
     model = SCScorer()
-    model.restore(os.path.join(project_root, 'models', 'full_reaxys_model_1024bool', 'model.ckpt-10654.as_numpy.json.gz'))
+    model.restore(os.path.join(models_dir, 'full_reaxys_model_1024bool', 'model.ckpt-10654.as_numpy.json.gz'))
     smis = ['CCCOCCC', 'CCCNc1ccccc1']
     for smi in smis:
         (smi, sco) = model.get_score_from_smi(smi)
         print('%.4f <--- %s' % (sco, smi))
 
     model = SCScorer()
-    model.restore(os.path.join(project_root, 'models', 'full_reaxys_model_2048bool', 'model.ckpt-10654.as_numpy.json.gz'), FP_len=2048)
+    model.restore(os.path.join(models_dir, 'full_reaxys_model_2048bool', 'model.ckpt-10654.as_numpy.json.gz'), FP_len=2048)
     smis = ['CCCOCCC', 'CCCNc1ccccc1']
     for smi in smis:
         (smi, sco) = model.get_score_from_smi(smi)
         print('%.4f <--- %s' % (sco, smi))
 
     model = SCScorer()
-    model.restore(os.path.join(project_root, 'models', 'full_reaxys_model_1024uint8', 'model.ckpt-10654.as_numpy.json.gz'))
+    model.restore(os.path.join(models_dir, 'full_reaxys_model_1024uint8', 'model.ckpt-10654.as_numpy.json.gz'))
     smis = ['CCCOCCC', 'CCCNc1ccccc1']
     for smi in smis:
         (smi, sco) = model.get_score_from_smi(smi)

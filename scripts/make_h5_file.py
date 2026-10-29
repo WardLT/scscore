@@ -5,7 +5,7 @@ import rdkit.Chem.AllChem as AllChem
 import random 
 import numpy as np
 from multiprocessing import Pool
-import cPickle as pickle
+import pickle
 
 '''
 This script is used to generate an .h5 file containing all the fingerprints 
